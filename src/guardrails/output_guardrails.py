@@ -41,12 +41,11 @@ def content_filter(response: str) -> dict:
 
     # PII patterns to check
     PII_PATTERNS = {
-        # TODO: Add regex patterns for:
-        # - VN phone number: r"0\d{9,10}"
-        # - Email: r"[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}"
-        # - National ID (CMND/CCCD): r"\b\d{9}\b|\b\d{12}\b"
-        # - API key pattern: r"sk-[a-zA-Z0-9-]+"
-        # - Password pattern: r"password\s*[:=]\s*\S+"
+        "API key pattern": r"\bsk-[a-zA-Z0-9_-]+",
+        "Password pattern": r"(?:password|mật\s*khẩu)\s*[:=]\s*\S+",
+        "VN phone number": r"(?:\+84|0)(?:3|5|7|8|9)\d{8}\b",
+        "Email": r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+",
+        "National ID": r"\b\d{9}\b|\b\d{12}\b",
     }
 
     for name, pattern in PII_PATTERNS.items():
@@ -97,7 +96,11 @@ If UNSAFE, add a brief reason on the next line.
 #     instruction=SAFETY_JUDGE_INSTRUCTION,
 # )
 
-safety_judge_agent = None  # TODO: Replace with implementation
+safety_judge_agent = llm_agent.LlmAgent(
+    model="gemini-3.5-flash",
+    name="safety_judge",
+    instruction=SAFETY_JUDGE_INSTRUCTION,
+)
 judge_runner = None
 
 

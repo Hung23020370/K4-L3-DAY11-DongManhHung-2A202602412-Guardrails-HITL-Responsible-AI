@@ -1,0 +1,17 @@
+{
+  "metrics": {
+    "total_requests": 27,
+    "blocked_requests": 12,
+    "rate_limited_count": 2,
+    "last_updated": "2026-09-28T03:10:25.483162+00:00"
+  },
+  "alerts": [
+    {
+      "timestamp": "2026-09-28T03:10:25.483162+00:00",
+      "level": "INFO",
+      "type": "RATE_LIMIT_TRIGGERED",
+      "message": "Rate limit was triggered 2 times"
+    }
+  ],
+  "status": "HEALTHY"
+}

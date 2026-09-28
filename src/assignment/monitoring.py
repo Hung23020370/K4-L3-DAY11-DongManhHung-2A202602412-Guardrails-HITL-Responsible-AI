@@ -1,82 +1,89 @@
 """
-Assignment 11 — Monitoring & Alerts starter (TODO).
+Assignment 11 — Monitoring & Alerting starter.
 
-Tracks block rate, rate-limit hits, judge fail rate.
-Fires alerts when thresholds are exceeded.
+Tracks metrics and triggers alerts when thresholds are exceeded.
+Never blocks by itself — helps operations respond to incidents.
 """
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 
 def default_metrics_path() -> str:
-    """Always resolve to <repo>/outputs/… (safe when cwd is src/)."""
+    """Always resolve to <repo>/outputs/metrics.json."""
     repo_root = Path(__file__).resolve().parents[2]
     return str(repo_root / "outputs" / "metrics.json")
 
 
-@dataclass
-class Alert:
-    metric: str
-    value: float
-    threshold: float
-    message: str
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
-@dataclass
 class MonitoringAlert:
-    """Aggregate counters from pipeline plugins and emit alerts."""
+    """Collects security metrics and evaluates alerting rules."""
 
-    block_rate_threshold: float = 0.5
-    rate_limit_hit_threshold: int = 5
-    judge_fail_rate_threshold: float = 0.3
-    alerts: list[Alert] = field(default_factory=list)
+    def __init__(self, block_rate_threshold: float = 0.5):
+        self.name = "monitoring_alert"
+        self.block_rate_threshold = block_rate_threshold
+        self.metrics = {
+            "total_requests": 0,
+            "blocked_requests": 0,
+            "rate_limited_count": 0,
+            "last_updated": utc_now_iso(),
+        }
+        self.alerts: list[dict] = []
 
-    # Counters — update these from your pipeline after each request
-    total_requests: int = 0
-    blocked_requests: int = 0
-    rate_limit_hits: int = 0
-    judge_checks: int = 0
-    judge_fails: int = 0
+    def record_metrics(
+        self,
+        total_requests: int = 0,
+        blocked_requests: int = 0,
+        rate_limited_count: int = 0,
+    ):
+        """Record or increment metric counters."""
+        self.metrics["total_requests"] += total_requests
+        self.metrics["blocked_requests"] += blocked_requests
+        self.metrics["rate_limited_count"] += rate_limited_count
+        self.metrics["last_updated"] = utc_now_iso()
+        self.check_metrics()
 
-    def check_metrics(self) -> list[Alert]:
-        """TODO: compute rates, append Alert objects when thresholds exceeded."""
-        raise NotImplementedError("Implement MonitoringAlert.check_metrics")
+    def check_metrics(self) -> list[dict]:
+        """Check if metrics exceed thresholds and create alerts."""
+        total = self.metrics["total_requests"]
+        blocked = self.metrics["blocked_requests"]
+        self.alerts.clear()
+
+        if total > 0:
+            block_rate = blocked / total
+            if block_rate >= self.block_rate_threshold:
+                self.alerts.append({
+                    "timestamp": utc_now_iso(),
+                    "level": "WARNING",
+                    "type": "HIGH_BLOCK_RATE",
+                    "message": f"Block rate at {block_rate:.1%} exceeds threshold of {self.block_rate_threshold:.1%}",
+                })
+
+        if self.metrics["rate_limited_count"] > 0:
+            self.alerts.append({
+                "timestamp": utc_now_iso(),
+                "level": "INFO",
+                "type": "RATE_LIMIT_TRIGGERED",
+                "message": f"Rate limit was triggered {self.metrics['rate_limited_count']} times",
+            })
+
+        return self.alerts
 
     def export_json(self, filepath: str | None = None):
-        """TODO: write metrics + alerts to JSON under repo-root ``outputs/`` by default.
-        Use ``filepath or default_metrics_path()`` so running from ``src/`` does not
-        create ``src/outputs/``.
-        """
-        _ = filepath or default_metrics_path()
-        raise NotImplementedError("Implement MonitoringAlert.export_json")
+        """Export metrics and alerts to outputs/metrics.json."""
+        target_path = Path(filepath or default_metrics_path())
+        target_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def snapshot(self) -> dict:
-        block_rate = (
-            self.blocked_requests / self.total_requests
-            if self.total_requests
-            else 0.0
-        )
-        judge_fail_rate = (
-            self.judge_fails / self.judge_checks if self.judge_checks else 0.0
-        )
-        return {
-            "total_requests": self.total_requests,
-            "blocked_requests": self.blocked_requests,
-            "block_rate": block_rate,
-            "rate_limit_hits": self.rate_limit_hits,
-            "judge_checks": self.judge_checks,
-            "judge_fails": self.judge_fails,
-            "judge_fail_rate": judge_fail_rate,
-            "alerts": [
-                {
-                    "metric": a.metric,
-                    "value": a.value,
-                    "threshold": a.threshold,
-                    "message": a.message,
-                }
-                for a in self.alerts
-            ],
+        data = {
+            "metrics": self.metrics,
+            "alerts": self.alerts if self.alerts else self.check_metrics(),
+            "status": "HEALTHY" if not any(a.get("level") == "CRITICAL" for a in self.alerts) else "ALERTING",
         }
+
+        with target_path.open("w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
